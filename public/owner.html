@@ -1,0 +1,1100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Owner Dashboard</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:ital,wght@0,300;0,400;0,500;1,300&display=swap" rel="stylesheet"/>
+<script src="/socket.io/socket.io.js"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #f5f3ef;
+    --surface: #ffffff;
+    --surface2: #f0ede8;
+    --border: #e4e0d8;
+    --accent: #ff6b35;
+    --accent2: #ffb347;
+    --text: #1a1814;
+    --muted: #888078;
+    --success: #16a34a;
+    --success-bg: #f0fdf4;
+    --danger: #dc2626;
+    --danger-bg: #fef2f2;
+    --radius: 16px;
+  }
+
+  html { scroll-behavior: smooth; }
+
+  body {
+    font-family: 'DM Sans', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+  }
+
+  /* Subtle dot grid background */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image: radial-gradient(circle, #d4cfc7 1px, transparent 1px);
+    background-size: 24px 24px;
+    opacity: 0.4;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .layout {
+    display: grid;
+    grid-template-columns: 300px 1fr;
+    min-height: 100vh;
+    position: relative;
+    z-index: 1;
+  }
+
+  /* ── SIDEBAR ── */
+  .sidebar {
+    background: var(--text);
+    color: #f0ede8;
+    padding: 32px 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 32px;
+    position: sticky;
+    top: 0;
+    height: 100vh;
+    overflow-y: auto;
+  }
+
+  .sidebar-header {}
+
+  .sidebar-logo {
+    font-family: 'Syne', sans-serif;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: #888;
+    margin-bottom: 16px;
+  }
+
+  .sidebar-title {
+    font-family: 'Syne', sans-serif;
+    font-size: 22px;
+    font-weight: 800;
+    line-height: 1.2;
+    margin-bottom: 6px;
+  }
+
+  .sidebar-title span { color: var(--accent); }
+
+  .sidebar-date {
+    font-size: 13px;
+    color: #666;
+    font-weight: 300;
+  }
+
+  /* Stats in sidebar */
+  .stat-block {
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 12px;
+    padding: 16px;
+  }
+
+  .stat-label {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: #666;
+    margin-bottom: 6px;
+  }
+
+  .stat-value {
+    font-family: 'Syne', sans-serif;
+    font-size: 36px;
+    font-weight: 800;
+    line-height: 1;
+    transition: all 0.3s;
+  }
+
+  .stat-value.bump { animation: bump 0.4s ease; }
+
+  .stat-sub {
+    font-size: 12px;
+    color: #555;
+    margin-top: 4px;
+  }
+
+  /* Now serving */
+  .now-serving {
+    background: var(--accent);
+    border-radius: 12px;
+    padding: 20px;
+    text-align: center;
+  }
+
+  .now-serving-label {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: rgba(255,255,255,0.7);
+    margin-bottom: 8px;
+  }
+
+  .now-serving-num {
+    font-family: 'Syne', sans-serif;
+    font-size: 64px;
+    font-weight: 800;
+    color: #fff;
+    line-height: 1;
+    transition: all 0.3s;
+  }
+
+  .now-serving-num.changed { animation: popIn 0.4s cubic-bezier(0.34,1.56,0.64,1); }
+
+  /* Next button */
+  .next-btn {
+    width: 100%;
+    background: #fff;
+    color: var(--text);
+    border: none;
+    border-radius: 12px;
+    padding: 16px;
+    font-family: 'Syne', sans-serif;
+    font-weight: 700;
+    font-size: 15px;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    letter-spacing: 0.01em;
+  }
+
+  .next-btn:hover { background: var(--accent); color: #fff; transform: translateY(-1px); }
+  .next-btn:active { transform: translateY(0) scale(0.98); }
+  .next-btn:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+
+  .next-btn .icon {
+    width: 20px; height: 20px;
+    background: var(--accent);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.2s;
+  }
+
+  .next-btn:hover .icon { background: rgba(255,255,255,0.3); }
+
+  /* Shop toggle */
+  .shop-toggle {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 12px;
+    padding: 14px 16px;
+  }
+
+  .toggle-label { font-size: 13px; color: #aaa; }
+  .toggle-label strong { display: block; font-size: 14px; color: #f0ede8; font-weight: 500; }
+
+  .toggle-switch {
+    width: 44px; height: 24px;
+    background: #333;
+    border-radius: 12px;
+    position: relative;
+    cursor: pointer;
+    transition: background 0.2s;
+    border: none;
+  }
+
+  .toggle-switch.on { background: var(--success); }
+
+  .toggle-switch::after {
+    content: '';
+    position: absolute;
+    top: 3px; left: 3px;
+    width: 18px; height: 18px;
+    background: #fff;
+    border-radius: 50%;
+    transition: transform 0.2s;
+  }
+
+  .toggle-switch.on::after { transform: translateX(20px); }
+
+  /* ── MAIN ── */
+  .main {
+    padding: 32px;
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+  }
+
+  .main-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    animation: fadeDown 0.5s ease both;
+  }
+
+  .main-title {
+    font-family: 'Syne', sans-serif;
+    font-size: 20px;
+    font-weight: 700;
+  }
+
+  .live-pill {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: var(--success-bg);
+    border: 1px solid #bbf7d0;
+    border-radius: 100px;
+    padding: 6px 12px;
+    font-size: 12px;
+    color: var(--success);
+    font-weight: 500;
+  }
+
+  .live-dot {
+    width: 7px; height: 7px;
+    background: var(--success);
+    border-radius: 50%;
+    animation: pulse 1.5s infinite;
+  }
+
+  /* Queue list */
+  .queue-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    animation: fadeUp 0.5s 0.1s ease both;
+  }
+
+  .queue-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 18px 20px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    transition: all 0.3s;
+    animation: slideIn 0.35s ease both;
+  }
+
+  .queue-card.serving {
+    border-color: var(--accent);
+    background: #fff8f5;
+    box-shadow: 0 4px 20px rgba(255,107,53,0.1);
+  }
+
+  .queue-card.done {
+    opacity: 0.4;
+    background: var(--surface2);
+  }
+
+  .queue-card.exiting {
+    animation: slideOut 0.35s ease forwards;
+  }
+
+  /* Token badge */
+  .token-badge {
+    width: 52px; height: 52px;
+    border-radius: 12px;
+    background: var(--surface2);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+
+  .queue-card.serving .token-badge {
+    background: var(--accent);
+  }
+
+  .token-badge-label {
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--muted);
+    line-height: 1;
+  }
+
+  .queue-card.serving .token-badge-label { color: rgba(255,255,255,0.7); }
+
+  .token-badge-num {
+    font-family: 'Syne', sans-serif;
+    font-weight: 800;
+    font-size: 20px;
+    line-height: 1.1;
+    color: var(--text);
+  }
+
+  .queue-card.serving .token-badge-num { color: #fff; }
+
+  /* Card info */
+  .card-info { flex: 1; min-width: 0; }
+
+  .card-items {
+    font-size: 14px;
+    font-weight: 500;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    margin-bottom: 4px;
+  }
+
+  .card-meta {
+    font-size: 12px;
+    color: var(--muted);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .card-amount {
+    font-family: 'Syne', sans-serif;
+    font-weight: 700;
+    font-size: 15px;
+    color: var(--accent);
+    white-space: nowrap;
+  }
+
+  /* Status badge */
+  .status-badge {
+    padding: 4px 10px;
+    border-radius: 100px;
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.03em;
+  }
+
+  .status-waiting {
+    background: #fef9ec;
+    color: #92400e;
+    border: 1px solid #fde68a;
+  }
+
+  .status-serving {
+    background: rgba(255,107,53,0.1);
+    color: var(--accent);
+    border: 1px solid rgba(255,107,53,0.2);
+  }
+
+  .status-done {
+    background: var(--success-bg);
+    color: var(--success);
+    border: 1px solid #bbf7d0;
+  }
+
+  /* Empty queue */
+  .empty-queue {
+    background: var(--surface);
+    border: 1px dashed var(--border);
+    border-radius: var(--radius);
+    padding: 60px 20px;
+    text-align: center;
+    color: var(--muted);
+  }
+
+  .empty-queue .big { font-size: 40px; margin-bottom: 12px; }
+  .empty-queue p { font-size: 14px; line-height: 1.6; }
+
+  /* Stats row */
+  .stats-row {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+    animation: fadeUp 0.5s 0.05s ease both;
+  }
+
+  .stat-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 18px;
+  }
+
+  .stat-card-label {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--muted);
+    margin-bottom: 6px;
+  }
+
+  .stat-card-value {
+    font-family: 'Syne', sans-serif;
+    font-size: 28px;
+    font-weight: 800;
+    transition: all 0.3s;
+  }
+
+  .stat-card-value.bump { animation: bump 0.4s ease; }
+
+  /* Toast notification */
+  .toast {
+    position: fixed;
+    bottom: 24px;
+    right: 24px;
+    background: var(--text);
+    color: #f0ede8;
+    padding: 12px 20px;
+    border-radius: 12px;
+    font-size: 14px;
+    font-weight: 500;
+    transform: translateY(80px);
+    opacity: 0;
+    transition: all 0.35s cubic-bezier(0.34,1.56,0.64,1);
+    z-index: 999;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.15);
+  }
+
+  .toast.show { transform: translateY(0); opacity: 1; }
+
+  /* Section label */
+  .section-label {
+    font-family: 'Syne', sans-serif;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 12px;
+  }
+
+  /* Animations */
+  @keyframes fadeDown {
+    from { opacity: 0; transform: translateY(-12px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(12px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  @keyframes slideIn {
+    from { opacity: 0; transform: translateX(-16px); }
+    to { opacity: 1; transform: translateX(0); }
+  }
+
+  @keyframes slideOut {
+    from { opacity: 1; transform: translateX(0); max-height: 100px; }
+    to { opacity: 0; transform: translateX(16px); max-height: 0; padding: 0; margin: 0; }
+  }
+
+  @keyframes bump {
+    0% { transform: scale(1); }
+    40% { transform: scale(1.12); }
+    100% { transform: scale(1); }
+  }
+
+  @keyframes popIn {
+    from { transform: scale(0.7); opacity: 0.5; }
+    to { transform: scale(1); opacity: 1; }
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.4; transform: scale(0.75); }
+  }
+
+  /* Scrollbar */
+  ::-webkit-scrollbar { width: 4px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+
+  /* Mobile responsive */
+  @media (max-width: 768px) {
+    .layout { grid-template-columns: 1fr; }
+    .sidebar { position: relative; height: auto; }
+    .stats-row { grid-template-columns: repeat(2, 1fr); }
+    .main { padding: 20px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="layout">
+  <!-- SIDEBAR -->
+  <aside class="sidebar">
+    <div class="sidebar-header">
+      <div class="sidebar-logo">Queue System</div>
+      <div class="sidebar-title">Owner<br/><span>Dashboard</span></div>
+      <div class="sidebar-date" id="sidebar-date"></div>
+    </div>
+
+    <!-- Now Serving -->
+    <div class="now-serving">
+      <div class="now-serving-label">Now serving</div>
+      <div class="now-serving-num" id="now-serving">—</div>
+    </div>
+
+    <!-- Waiting count -->
+    <div class="stat-block">
+      <div class="stat-label">Waiting in queue</div>
+      <div class="stat-value" id="waiting-count">0</div>
+      <div class="stat-sub">customers right now</div>
+    </div>
+
+    <!-- Next button -->
+    <button class="next-btn" id="next-btn" onclick="serveNext()">
+      <div class="icon">
+        <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+          <path d="M2 1L7 5L2 9" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </div>
+      Call Next Customer
+    </button>
+
+    <!-- Shop toggle -->
+    <div class="shop-toggle">
+      <div class="toggle-label">
+        <strong id="shop-status-text">Shop Open</strong>
+        <span>tap to toggle</span>
+      </div>
+      <button class="toggle-switch on" id="shop-toggle" onclick="toggleShop()"></button>
+    </div>
+
+    <!-- Served today -->
+    <div class="stat-block">
+      <div class="stat-label">Served today</div>
+      <div class="stat-value" id="served-today">0</div>
+      <div class="stat-sub">customers total</div>
+    </div>
+  </aside>
+
+  <!-- MAIN CONTENT -->
+  <main class="main">
+    <div class="main-header">
+      <div class="main-title">Live Queue</div>
+      <div class="live-pill">
+        <div class="live-dot"></div>
+        Live updates
+      </div>
+    </div>
+
+    <!-- Stats row -->
+    <div class="stats-row">
+      <div class="stat-card">
+        <div class="stat-card-label">Total tokens today</div>
+        <div class="stat-card-value" id="total-tokens">0</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-card-label">Revenue today</div>
+        <div class="stat-card-value" id="total-revenue">₹0</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-card-label">Avg order value</div>
+        <div class="stat-card-value" id="avg-order">₹0</div>
+      </div>
+    </div>
+
+    <!-- Queue list -->
+    <div>
+      <!-- MENU MANAGEMENT -->
+<div style="margin-bottom:32px">
+  <p class="section-label">Menu Management</p>
+
+  <!-- Add item form -->
+  <div style="
+    background:var(--surface);
+    border:1px solid var(--border);
+    border-radius:var(--radius);
+    padding:20px;
+    margin-bottom:16px;
+  ">
+    <div style="
+      font-family:'Syne',sans-serif;
+      font-weight:700;font-size:15px;
+      margin-bottom:16px;
+    ">Add new item</div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+      <input id="new-item-name" type="text" placeholder="Item name" style="
+        background:var(--surface2);border:1px solid var(--border);
+        border-radius:10px;padding:10px 14px;
+        font-family:'DM Sans',sans-serif;font-size:14px;
+        color:var(--text);outline:none;width:100%;
+        transition:border 0.2s;
+      " onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'"/>
+
+      <input id="new-item-price" type="number" placeholder="Price (₹)" style="
+        background:var(--surface2);border:1px solid var(--border);
+        border-radius:10px;padding:10px 14px;
+        font-family:'DM Sans',sans-serif;font-size:14px;
+        color:var(--text);outline:none;width:100%;
+        transition:border 0.2s;
+      " onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'"/>
+    </div>
+
+    <input id="new-item-category" type="text" placeholder="Category (e.g. snacks, drinks)" style="
+      background:var(--surface2);border:1px solid var(--border);
+      border-radius:10px;padding:10px 14px;
+      font-family:'DM Sans',sans-serif;font-size:14px;
+      color:var(--text);outline:none;width:100%;
+      margin-bottom:10px;
+      transition:border 0.2s;
+    " onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'"/>
+
+    <button onclick="addMenuItem()" style="
+      background:var(--accent);color:#fff;border:none;
+      border-radius:10px;padding:11px 20px;
+      font-family:'Syne',sans-serif;font-weight:700;font-size:14px;
+      cursor:pointer;transition:all 0.2s;width:100%;
+    ">Add Item</button>
+  </div>
+
+  <!-- Current menu items -->
+  <div id="menu-management-list" style="display:flex;flex-direction:column;gap:8px">
+    <!-- items injected here -->
+  </div>
+</div>
+      <p class="section-label">Queue</p>
+      <div class="queue-list" id="queue-list">
+        <div class="empty-queue">
+          <div class="big">🪑</div>
+          <p>Queue is empty.<br/>Customers will appear here<br/>as they join.</p>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<script>
+  // ─── STATE ───────────────────────────────────────────
+  let queueData = [];
+  let lastServedToken = 0;
+  let isShopOpen = true;
+  let socket = null;
+
+  // ─── INIT ────────────────────────────────────────────
+  function init() {
+    // Set date
+    const now = new Date();
+    document.getElementById('sidebar-date').textContent =
+      now.toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long' });
+
+    loadQueue();
+    connectSocket();
+    loadMenuItems();
+  }
+
+  // ─── LOAD QUEUE ──────────────────────────────────────
+  async function loadQueue() {
+    try {
+      const res = await fetch('/owner/queue');
+      const data = await res.json();
+      queueData = data.queue;
+      lastServedToken = data.lastServedToken;
+      isShopOpen = data.isOpen;
+
+      renderQueue();
+      updateStats();
+      updateSidebar();
+    } catch(e) {
+      showToast('Could not load queue', 'error');
+    }
+  }
+
+  // ─── RENDER QUEUE ─────────────────────────────────────
+  function renderQueue() {
+    const list = document.getElementById('queue-list');
+
+    if (queueData.length === 0) {
+      list.innerHTML = `
+        <div class="empty-queue">
+          <div class="big">🪑</div>
+          <p>Queue is empty.<br/>Customers will appear here as they join.</p>
+        </div>`;
+      return;
+    }
+
+    list.innerHTML = queueData.map((entry, i) => {
+      const isServing = entry.token === lastServedToken + 1 && entry.status === 'waiting';
+      const isDone = entry.status === 'done';
+      const itemNames = entry.items.map(it => `${it.qty > 1 ? it.qty+'× ' : ''}${it.name}`).join(', ');
+      const timeAgo = getTimeAgo(entry.createdAt);
+
+      return `
+        <div class="queue-card ${isServing ? 'serving' : ''} ${isDone ? 'done' : ''}" 
+             id="card-${entry.token}"
+             style="animation-delay:${i * 0.05}s">
+          <div class="token-badge">
+            <div class="token-badge-label">No.</div>
+            <div class="token-badge-num">${entry.token}</div>
+          </div>
+          <div class="card-info">
+            <div class="card-items">${itemNames}</div>
+            <div class="card-meta">
+              <span>${timeAgo}</span>
+              ${isServing ? '<span style="color:var(--accent);font-weight:500">● Serving now</span>' : ''}
+            </div>
+          </div>
+          <div style="display:flex;flex-direction:column;align-items:flex-end;gap:8px">
+            <div class="card-amount">₹${entry.totalAmount}</div>
+            <div class="status-badge ${isDone ? 'status-done' : isServing ? 'status-serving' : 'status-waiting'}">
+              ${isDone ? 'Done' : isServing ? 'Serving' : 'Waiting'}
+            </div>
+          </div>
+        </div>`;
+    }).join('');
+  }
+
+  // ─── SERVE NEXT ──────────────────────────────────────
+  async function serveNext() {
+    const btn = document.getElementById('next-btn');
+    btn.disabled = true;
+
+    try {
+      const res = await fetch('/owner/next', { method: 'POST' });
+      const data = await res.json();
+
+      if (data.success) {
+        lastServedToken = data.lastServedToken;
+
+        // Animate the served card out
+        const servedCard = document.getElementById(`card-${data.lastServedToken}`);
+        if (servedCard) {
+          servedCard.classList.add('exiting');
+          setTimeout(() => loadQueue(), 400);
+        } else {
+          loadQueue();
+        }
+
+        animateSidebar(data.lastServedToken, data.waitingCount);
+        showToast(`Token ${data.lastServedToken} served!`);
+      } else {
+        showToast(data.message || 'No one in queue', 'warn');
+      }
+    } catch(e) {
+      showToast('Something went wrong', 'error');
+    }
+
+    setTimeout(() => btn.disabled = false, 800);
+  }
+
+  // ─── TOGGLE SHOP ─────────────────────────────────────
+  async function toggleShop() {
+    isShopOpen = !isShopOpen;
+    await fetch('/owner/toggle-shop', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ isOpen: isShopOpen })
+    });
+    updateShopToggle();
+    showToast(isShopOpen ? 'Shop is now open' : 'Shop is now closed');
+  }
+
+  function updateShopToggle() {
+    const toggle = document.getElementById('shop-toggle');
+    const text = document.getElementById('shop-status-text');
+    toggle.classList.toggle('on', isShopOpen);
+    text.textContent = isShopOpen ? 'Shop Open' : 'Shop Closed';
+  }
+
+  // ─── SIDEBAR ANIMATION ───────────────────────────────
+  function animateSidebar(served, waiting) {
+    const numEl = document.getElementById('now-serving');
+    numEl.textContent = served || '—';
+    numEl.classList.remove('changed');
+    void numEl.offsetWidth;
+    numEl.classList.add('changed');
+
+    const waitEl = document.getElementById('waiting-count');
+    waitEl.textContent = waiting;
+    waitEl.classList.remove('bump');
+    void waitEl.offsetWidth;
+    waitEl.classList.add('bump');
+  }
+
+  // ─── UPDATE STATS ────────────────────────────────────
+  function updateStats() {
+    const waiting = queueData.filter(q => q.status === 'waiting').length;
+    const done = queueData.filter(q => q.status === 'done').length;
+    const totalRevenue = queueData.reduce((s, q) => s + (q.totalAmount || 0), 0);
+    const avg = queueData.length > 0 ? Math.round(totalRevenue / queueData.length) : 0;
+
+    document.getElementById('waiting-count').textContent = waiting;
+    document.getElementById('served-today').textContent = done;
+    document.getElementById('total-tokens').textContent = queueData.length;
+    document.getElementById('total-revenue').textContent = `₹${totalRevenue}`;
+    document.getElementById('avg-order').textContent = `₹${avg}`;
+  }
+
+  function updateSidebar() {
+    const numEl = document.getElementById('now-serving');
+    numEl.textContent = lastServedToken || '—';
+    updateShopToggle();
+  }
+
+  // ─── SOCKET.IO ────────────────────────────────────────
+  function connectSocket() {
+    socket = io();
+
+    socket.on('queue-updated', (data) => {
+      loadQueue();
+      if (data.lastServedToken) {
+        animateSidebar(data.lastServedToken, data.waitingCount);
+      } else {
+        // New customer joined
+        const waitEl = document.getElementById('waiting-count');
+        waitEl.classList.remove('bump');
+        void waitEl.offsetWidth;
+        waitEl.classList.add('bump');
+        showToast('New customer joined!');
+      }
+    });
+
+    socket.on('connect', () => console.log('Socket connected'));
+  }
+
+  // ─── HELPERS ─────────────────────────────────────────
+  function getTimeAgo(timestamp) {
+    if (!timestamp) return 'just now';
+    const date = timestamp._seconds ? new Date(timestamp._seconds * 1000) : new Date(timestamp);
+    const mins = Math.floor((Date.now() - date) / 60000);
+    if (mins < 1) return 'just now';
+    if (mins === 1) return '1 min ago';
+    if (mins < 60) return `${mins} mins ago`;
+    return `${Math.floor(mins/60)}h ago`;
+  }
+
+  function showToast(msg, type = 'success') {
+    const toast = document.getElementById('toast');
+    const icon = type === 'error' ? '✕' : type === 'warn' ? '!' : '✓';
+    toast.innerHTML = `<span style="font-size:16px">${icon}</span> ${msg}`;
+    toast.classList.add('show');
+    setTimeout(() => toast.classList.remove('show'), 3000);
+  }
+
+  init();
+  // ─── MENU MANAGEMENT ─────────────────────────────────
+
+async function loadMenuItems() {
+  try {
+    const res = await fetch('/menu');
+    const items = await res.json();
+    renderMenuItems(items);
+  } catch(e) {
+    showToast('Could not load menu', 'error');
+  }
+}
+
+function renderMenuItems(items) {
+  const list = document.getElementById('menu-management-list');
+
+  if (items.length === 0) {
+    list.innerHTML = `
+      <div style="
+        text-align:center;padding:30px;
+        color:var(--muted);font-size:14px;
+        border:1px dashed var(--border);
+        border-radius:var(--radius);
+      ">No menu items yet. Add one above.</div>`;
+    return;
+  }
+
+  list.innerHTML = items.map(item => `
+    <div id="menu-card-${item.id}" style="
+      background:var(--surface);
+      border:1px solid var(--border);
+      border-radius:var(--radius);
+      padding:16px 18px;
+      display:flex;
+      align-items:center;
+      gap:12px;
+      transition:all 0.2s;
+    ">
+      <!-- View mode -->
+      <div id="view-${item.id}" style="display:flex;align-items:center;gap:12px;flex:1">
+        <div style="flex:1">
+          <div style="
+            font-family:'Syne',sans-serif;
+            font-weight:600;font-size:14px;
+            margin-bottom:3px;
+          ">${item.name}</div>
+          <div style="font-size:12px;color:var(--muted);text-transform:capitalize">${item.category}</div>
+        </div>
+        <div style="
+          font-family:'Syne',sans-serif;
+          font-weight:700;font-size:15px;
+          color:var(--accent);
+          margin-right:8px;
+        ">₹${item.price}</div>
+        <button onclick="startEdit('${item.id}', '${item.name}', ${item.price}, '${item.category}')" style="
+          background:var(--surface2);border:1px solid var(--border);
+          border-radius:8px;padding:7px 12px;
+          font-size:12px;color:var(--muted);
+          cursor:pointer;transition:all 0.2s;
+        ">Edit</button>
+        <button onclick="deleteMenuItem('${item.id}')" style="
+          background:var(--danger-bg);border:1px solid #fecaca;
+          border-radius:8px;padding:7px 12px;
+          font-size:12px;color:var(--danger);
+          cursor:pointer;transition:all 0.2s;
+        ">Delete</button>
+      </div>
+
+      <!-- Edit mode (hidden) -->
+      <div id="edit-${item.id}" style="display:none;flex:1;flex-direction:column;gap:8px">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+          <input id="edit-name-${item.id}" type="text" value="${item.name}" style="
+            background:var(--surface2);border:1px solid var(--accent);
+            border-radius:8px;padding:8px 12px;
+            font-family:'DM Sans',sans-serif;font-size:13px;
+            color:var(--text);outline:none;width:100%;
+          "/>
+          <input id="edit-price-${item.id}" type="number" value="${item.price}" style="
+            background:var(--surface2);border:1px solid var(--accent);
+            border-radius:8px;padding:8px 12px;
+            font-family:'DM Sans',sans-serif;font-size:13px;
+            color:var(--text);outline:none;width:100%;
+          "/>
+        </div>
+        <input id="edit-category-${item.id}" type="text" value="${item.category}" style="
+          background:var(--surface2);border:1px solid var(--accent);
+          border-radius:8px;padding:8px 12px;
+          font-family:'DM Sans',sans-serif;font-size:13px;
+          color:var(--text);outline:none;width:100%;
+        "/>
+        <div style="display:flex;gap:8px">
+          <button onclick="saveEdit('${item.id}')" style="
+            flex:1;background:var(--accent);color:#fff;border:none;
+            border-radius:8px;padding:9px;
+            font-family:'Syne',sans-serif;font-weight:700;font-size:13px;
+            cursor:pointer;
+          ">Save</button>
+          <button onclick="cancelEdit('${item.id}')" style="
+            flex:1;background:transparent;color:var(--muted);
+            border:1px solid var(--border);
+            border-radius:8px;padding:9px;
+            font-family:'DM Sans',sans-serif;font-size:13px;
+            cursor:pointer;
+          ">Cancel</button>
+        </div>
+      </div>
+    </div>`
+  ).join('');
+}
+
+function startEdit(id, name, price, category) {
+  document.getElementById(`view-${id}`).style.display = 'none';
+  document.getElementById(`edit-${id}`).style.display = 'flex';
+}
+
+function cancelEdit(id) {
+  document.getElementById(`view-${id}`).style.display = 'flex';
+  document.getElementById(`edit-${id}`).style.display = 'none';
+}
+
+async function saveEdit(id) {
+  const name = document.getElementById(`edit-name-${id}`).value.trim();
+  const price = document.getElementById(`edit-price-${id}`).value;
+  const category = document.getElementById(`edit-category-${id}`).value.trim();
+
+  if (!name || !price || !category) {
+    showToast('Fill all fields', 'error');
+    return;
+  }
+
+  try {
+    await authFetch(`/owner/menu/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify({ name, price, category })
+    });
+    showToast('Item updated!');
+    loadMenuItems();
+  } catch(e) {
+    showToast('Could not update item', 'error');
+  }
+}
+
+async function addMenuItem() {
+  const name = document.getElementById('new-item-name').value.trim();
+  const price = document.getElementById('new-item-price').value;
+  const category = document.getElementById('new-item-category').value.trim();
+
+  if (!name || !price || !category) {
+    showToast('Fill all fields', 'error');
+    return;
+  }
+
+  try {
+    await authFetch('/owner/menu/add', {
+      method: 'POST',
+      body: JSON.stringify({ name, price, category })
+    });
+    showToast('Item added!');
+    document.getElementById('new-item-name').value = '';
+    document.getElementById('new-item-price').value = '';
+    document.getElementById('new-item-category').value = '';
+    loadMenuItems();
+  } catch(e) {
+    showToast('Could not add item', 'error');
+  }
+}
+
+async function deleteMenuItem(id) {
+  if (!confirm('Delete this item?')) return;
+  try {
+    await authFetch(`/owner/menu/${id}`, { method: 'DELETE' });
+    const card = document.getElementById(`menu-card-${id}`);
+    card.style.opacity = '0';
+    card.style.transform = 'translateX(16px)';
+    card.style.transition = 'all 0.3s';
+    setTimeout(() => loadMenuItems(), 300);
+    showToast('Item deleted!');
+  } catch(e) {
+    showToast('Could not delete item', 'error');
+  }
+}
+</script>
+<script type="module">
+  import { auth, onAuthStateChanged, signOut } from '/firebase-client.js';
+
+  async function authFetch(url, options = {}) {
+    const user = auth.currentUser;
+    if (!user) { window.location.href = '/'; return; }
+    const token = await user.getIdToken();
+    return fetch(url, {
+      ...options,
+      headers: {
+        ...options.headers,
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      }
+    });
+  }
+
+  window.authFetch = authFetch;
+
+  // Check auth on load — redirect to home if not logged in
+  onAuthStateChanged(auth, (user) => {
+    if (!user) window.location.href = '/customer.html';
+  });
+
+  // Logout
+  window.handleLogout = async function() {
+    await signOut(auth);
+    window.location.href = '/customer.html';
+  }
+</script>
+</body>
+</html>

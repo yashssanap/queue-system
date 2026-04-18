@@ -1,0 +1,1377 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Order & Queue</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:ital,wght@0,300;0,400;0,500;1,300&display=swap" rel="stylesheet"/>
+<script type="module" src="/firebase-client.js"></script>
+<script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+<script src="/socket.io/socket.io.js"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #0a0a0a;
+    --surface: #141414;
+    --surface2: #1e1e1e;
+    --border: #2a2a2a;
+    --accent: #ff6b35;
+    --accent2: #ffb347;
+    --text: #f0ede8;
+    --muted: #888;
+    --success: #4ade80;
+    --radius: 16px;
+  }
+
+  html { scroll-behavior: smooth; }
+
+  body {
+    font-family: 'DM Sans', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* Background grain texture */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.04'/%3E%3C/svg%3E");
+    opacity: 0.4;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  /* Ambient glow */
+  body::after {
+    content: '';
+    position: fixed;
+    top: -200px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 600px;
+    height: 600px;
+    background: radial-gradient(circle, rgba(255,107,53,0.08) 0%, transparent 70%);
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .container {
+    max-width: 480px;
+    margin: 0 auto;
+    padding: 0 20px 100px;
+    position: relative;
+    z-index: 1;
+  }
+
+  /* HEADER */
+  .header {
+    padding: 40px 0 32px;
+    animation: fadeDown 0.6s ease both;
+  }
+
+  .shop-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 100px;
+    padding: 6px 14px 6px 8px;
+    margin-bottom: 20px;
+  }
+
+  .shop-badge .dot {
+    width: 8px; height: 8px;
+    background: var(--success);
+    border-radius: 50%;
+    animation: pulse 2s infinite;
+  }
+
+  .shop-badge span {
+    font-size: 12px;
+    color: var(--muted);
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+
+  .header h1 {
+    font-family: 'Syne', sans-serif;
+    font-size: clamp(32px, 8vw, 42px);
+    font-weight: 800;
+    line-height: 1.05;
+    letter-spacing: -0.02em;
+  }
+
+  .header h1 span {
+    color: var(--accent);
+  }
+
+  .header p {
+    margin-top: 10px;
+    color: var(--muted);
+    font-size: 14px;
+    font-weight: 300;
+  }
+
+  /* SECTION LABEL */
+  .section-label {
+    font-family: 'Syne', sans-serif;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 12px;
+    padding-left: 2px;
+  }
+
+  /* CATEGORY FILTER */
+  .categories {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+    animation: fadeUp 0.5s 0.1s ease both;
+  }
+
+  .cat-btn {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--muted);
+    border-radius: 100px;
+    padding: 7px 16px;
+    font-family: 'DM Sans', sans-serif;
+    font-size: 13px;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+
+  .cat-btn:hover { border-color: var(--accent); color: var(--text); }
+  .cat-btn.active {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #fff;
+    font-weight: 500;
+  }
+
+  /* MENU ITEMS */
+  .menu-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    animation: fadeUp 0.5s 0.15s ease both;
+  }
+
+  .menu-item {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 16px;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    cursor: pointer;
+    transition: all 0.2s;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .menu-item::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(135deg, rgba(255,107,53,0.04), transparent);
+    opacity: 0;
+    transition: opacity 0.2s;
+  }
+
+  .menu-item:hover { border-color: #3a3a3a; transform: translateY(-1px); }
+  .menu-item:hover::before { opacity: 1; }
+
+  .menu-item.selected {
+    border-color: var(--accent);
+    background: rgba(255,107,53,0.06);
+  }
+
+  .menu-item.selected::before { opacity: 1; }
+
+  .item-emoji {
+    width: 48px; height: 48px;
+    background: var(--surface2);
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 22px;
+    flex-shrink: 0;
+    transition: transform 0.2s;
+  }
+
+  .menu-item.selected .item-emoji { transform: scale(1.1); }
+
+  .item-info { flex: 1; }
+
+  .item-name {
+    font-family: 'Syne', sans-serif;
+    font-weight: 600;
+    font-size: 15px;
+    margin-bottom: 3px;
+  }
+
+  .item-category {
+    font-size: 12px;
+    color: var(--muted);
+    text-transform: capitalize;
+  }
+
+  .item-price {
+    font-family: 'Syne', sans-serif;
+    font-weight: 700;
+    font-size: 16px;
+    color: var(--accent2);
+  }
+
+  .item-check {
+    width: 22px; height: 22px;
+    border-radius: 50%;
+    border: 2px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s;
+    flex-shrink: 0;
+  }
+
+  .menu-item.selected .item-check {
+    background: var(--accent);
+    border-color: var(--accent);
+  }
+
+  .item-check svg {
+    opacity: 0;
+    transform: scale(0.5);
+    transition: all 0.2s;
+  }
+
+  .menu-item.selected .item-check svg {
+    opacity: 1;
+    transform: scale(1);
+  }
+
+  /* QUANTITY CONTROL */
+  .qty-control {
+    display: none;
+    align-items: center;
+    gap: 10px;
+    margin-top: 10px;
+  }
+
+  .menu-item.selected .qty-control { display: flex; }
+
+  .qty-btn {
+    width: 28px; height: 28px;
+    border-radius: 8px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-size: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+
+  .qty-btn:hover { background: var(--accent); border-color: var(--accent); }
+
+  .qty-num {
+    font-family: 'Syne', sans-serif;
+    font-weight: 700;
+    font-size: 15px;
+    min-width: 20px;
+    text-align: center;
+  }
+
+  /* SKELETON LOADING */
+  .skeleton {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 16px;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+  }
+
+  .skel-box {
+    border-radius: 12px;
+    background: var(--surface2);
+    animation: shimmer 1.4s infinite;
+  }
+
+  @keyframes shimmer {
+    0%, 100% { opacity: 0.4; }
+    50% { opacity: 0.8; }
+  }
+
+  /* STICKY CART BAR */
+  .cart-bar {
+    position: fixed;
+    bottom: 0; left: 0; right: 0;
+    z-index: 100;
+    padding: 16px 20px;
+    background: linear-gradient(to top, var(--bg) 70%, transparent);
+    transform: translateY(100%);
+    transition: transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+
+  .cart-bar.visible { transform: translateY(0); }
+
+  .cart-inner {
+    max-width: 480px;
+    margin: 0 auto;
+    background: var(--text);
+    color: var(--bg);
+    border-radius: 14px;
+    padding: 14px 18px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    box-shadow: 0 -8px 40px rgba(0,0,0,0.5);
+  }
+
+  .cart-info {}
+
+  .cart-count {
+    font-size: 12px;
+    font-weight: 500;
+    opacity: 0.6;
+    margin-bottom: 2px;
+  }
+
+  .cart-total {
+    font-family: 'Syne', sans-serif;
+    font-weight: 800;
+    font-size: 20px;
+  }
+
+  .pay-btn {
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    border-radius: 10px;
+    padding: 12px 22px;
+    font-family: 'Syne', sans-serif;
+    font-weight: 700;
+    font-size: 14px;
+    cursor: pointer;
+    transition: all 0.2s;
+    white-space: nowrap;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .pay-btn:hover { background: #ff5520; transform: scale(1.02); }
+  .pay-btn:active { transform: scale(0.98); }
+  .pay-btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+
+  .pay-btn .arrow {
+    transition: transform 0.2s;
+  }
+  .pay-btn:hover .arrow { transform: translateX(3px); }
+
+  /* SUCCESS SCREEN */
+  .success-screen {
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    padding: 60px 0 40px;
+    animation: fadeUp 0.5s ease both;
+  }
+
+  .success-screen.show { display: flex; }
+
+  .token-ring {
+    width: 140px; height: 140px;
+    border-radius: 50%;
+    border: 3px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 28px;
+    position: relative;
+    animation: ringPop 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+  }
+
+  .token-ring::before {
+    content: '';
+    position: absolute;
+    inset: -6px;
+    border-radius: 50%;
+    border: 3px solid var(--accent);
+    animation: spin 3s linear infinite;
+    border-top-color: transparent;
+    border-left-color: transparent;
+  }
+
+  .token-label {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--muted);
+    margin-bottom: 4px;
+  }
+
+  .token-number {
+    font-family: 'Syne', sans-serif;
+    font-size: 52px;
+    font-weight: 800;
+    color: var(--accent);
+    line-height: 1;
+  }
+
+  .success-title {
+    font-family: 'Syne', sans-serif;
+    font-size: 24px;
+    font-weight: 800;
+    margin-bottom: 8px;
+  }
+
+  .success-sub {
+    color: var(--muted);
+    font-size: 14px;
+    max-width: 280px;
+    line-height: 1.6;
+    margin-bottom: 36px;
+  }
+
+  /* QUEUE STATUS CARD */
+  .queue-card {
+    width: 100%;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 20px;
+    margin-bottom: 16px;
+  }
+
+  .queue-card-label {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--muted);
+    margin-bottom: 6px;
+  }
+
+  .queue-position {
+    font-family: 'Syne', sans-serif;
+    font-size: 36px;
+    font-weight: 800;
+    transition: all 0.4s;
+  }
+
+  .queue-position.updated {
+    color: var(--success);
+    animation: bump 0.4s ease;
+  }
+
+  .queue-position span {
+    font-size: 14px;
+    font-weight: 400;
+    color: var(--muted);
+    font-family: 'DM Sans', sans-serif;
+  }
+
+  .your-order {
+    width: 100%;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 20px;
+  }
+
+  .order-item-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--border);
+    font-size: 14px;
+  }
+
+  .order-item-row:last-child { border-bottom: none; }
+  .order-item-row .name { color: var(--text); }
+  .order-item-row .price { color: var(--accent2); font-weight: 500; }
+
+  .live-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    background: rgba(74,222,128,0.1);
+    border: 1px solid rgba(74,222,128,0.2);
+    border-radius: 100px;
+    padding: 4px 10px;
+    font-size: 11px;
+    color: var(--success);
+    margin-bottom: 24px;
+  }
+
+  .live-badge .dot {
+    width: 6px; height: 6px;
+    background: var(--success);
+    border-radius: 50%;
+    animation: pulse 1.5s infinite;
+  }
+
+  /* EMPTY STATE */
+  .empty-state {
+    text-align: center;
+    padding: 40px 20px;
+    color: var(--muted);
+    font-size: 14px;
+    display: none;
+  }
+
+  /* ANIMATIONS */
+  @keyframes fadeDown {
+    from { opacity: 0; transform: translateY(-16px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(16px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.5; transform: scale(0.8); }
+  }
+
+  @keyframes spin {
+    to { transform: rotate(360deg); }
+  }
+
+  @keyframes ringPop {
+    from { opacity: 0; transform: scale(0.6); }
+    to { opacity: 1; transform: scale(1); }
+  }
+
+  @keyframes bump {
+    0% { transform: scale(1); }
+    40% { transform: scale(1.08); }
+    100% { transform: scale(1); }
+  }
+
+  /* MENU SECTION */
+  #menu-section { animation: fadeUp 0.5s 0.2s ease both; }
+
+  /* Item stagger */
+  .menu-item:nth-child(1) { animation: fadeUp 0.4s 0.2s ease both; }
+  .menu-item:nth-child(2) { animation: fadeUp 0.4s 0.27s ease both; }
+  .menu-item:nth-child(3) { animation: fadeUp 0.4s 0.34s ease both; }
+  .menu-item:nth-child(4) { animation: fadeUp 0.4s 0.41s ease both; }
+  .menu-item:nth-child(5) { animation: fadeUp 0.4s 0.48s ease both; }
+  .menu-item:nth-child(6) { animation: fadeUp 0.4s 0.55s ease both; }
+
+  /* scrollbar */
+  ::-webkit-scrollbar { width: 4px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+  @keyframes bounce {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-12px); }
+}
+</style>
+</head>
+<body>
+
+<div class="container">
+  <!-- Owner corner button -->
+<div style="position:fixed;top:16px;right:16px;z-index:200;">
+  <button id="owner-corner-btn" onclick="toggleOwnerModal()" style="
+    background:var(--surface);
+    border:1px solid var(--border);
+    border-radius:100px;
+    padding:8px 14px;
+    font-family:'DM Sans',sans-serif;
+    font-size:12px;
+    color:var(--muted);
+    cursor:pointer;
+    display:flex;
+    align-items:center;
+    gap:6px;
+    transition:all 0.2s;
+  ">
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+    </svg>
+    Owner
+  </button>
+</div>
+  <!-- HEADER -->
+  <div class="header">
+    <div class="shop-badge">
+      <div class="dot"></div>
+      <span>Open now</span>
+    </div>
+    <h1>What would<br/>you like to <span>order?</span></h1>
+    <p>Select items below, pay once, join the queue instantly.</p>
+  </div>
+
+  <!-- MENU SECTION -->
+  <div id="menu-section">
+    <p class="section-label">Menu</p>
+
+    <!-- Category filters -->
+    <div class="categories" id="categories">
+      <button class="cat-btn active" data-cat="all">All</button>
+    </div>
+
+    <!-- Menu items -->
+    <div class="menu-grid" id="menu-grid">
+      <!-- Skeleton loaders -->
+      <div class="skeleton">
+        <div class="skel-box" style="width:48px;height:48px;flex-shrink:0"></div>
+        <div style="flex:1;display:flex;flex-direction:column;gap:8px">
+          <div class="skel-box" style="height:14px;width:60%"></div>
+          <div class="skel-box" style="height:11px;width:35%"></div>
+        </div>
+        <div class="skel-box" style="width:40px;height:16px"></div>
+      </div>
+      <div class="skeleton">
+        <div class="skel-box" style="width:48px;height:48px;flex-shrink:0"></div>
+        <div style="flex:1;display:flex;flex-direction:column;gap:8px">
+          <div class="skel-box" style="height:14px;width:50%"></div>
+          <div class="skel-box" style="height:11px;width:30%"></div>
+        </div>
+        <div class="skel-box" style="width:40px;height:16px"></div>
+      </div>
+      <div class="skeleton">
+        <div class="skel-box" style="width:48px;height:48px;flex-shrink:0"></div>
+        <div style="flex:1;display:flex;flex-direction:column;gap:8px">
+          <div class="skel-box" style="height:14px;width:70%"></div>
+          <div class="skel-box" style="height:11px;width:40%"></div>
+        </div>
+        <div class="skel-box" style="width:40px;height:16px"></div>
+      </div>
+    </div>
+
+    <div class="empty-state" id="empty-state">No items in this category.</div>
+  </div>
+
+  <!-- SUCCESS SCREEN (hidden initially) -->
+  <div class="success-screen" id="success-screen">
+    <div class="token-ring">
+      <div class="token-label">Token</div>
+      <div class="token-number" id="token-display">—</div>
+    </div>
+
+    <h2 class="success-title">You're in the queue!</h2>
+    <p class="success-sub">We'll call your token number when it's your turn. Keep this screen open.</p>
+
+    <div class="live-badge">
+      <div class="dot"></div>
+      Live updates on
+    </div>
+
+    <div class="queue-card">
+      <div class="queue-card-label">People ahead of you</div>
+      <div class="queue-position" id="queue-position">—<span> people ahead</span></div>
+    </div>
+
+    <div class="your-order" id="your-order">
+      <p class="queue-card-label" style="margin-bottom:12px">Your order</p>
+      <!-- order items injected here -->
+    </div>
+  </div>
+</div>
+
+<!-- STATE 2: YOUR TURN -->
+<div id="your-turn-screen" style="display:none;flex-direction:column;align-items:center;text-align:center;padding:60px 0 40px;animation:fadeUp 0.5s ease both">
+  
+  <div style="font-size:64px;margin-bottom:24px;animation:bounce 1s infinite">👆</div>
+  
+  <h2 style="font-family:'Syne',sans-serif;font-size:28px;font-weight:800;margin-bottom:10px">
+    It's your turn!
+  </h2>
+  <p style="color:var(--muted);font-size:14px;margin-bottom:40px;max-width:260px;line-height:1.6">
+    Head to the counter now.<br/>Your order is being prepared.
+  </p>
+
+  <div style="font-family:'Syne',sans-serif;font-size:13px;color:var(--muted);margin-bottom:12px;text-transform:uppercase;letter-spacing:0.08em">
+    Received your order?
+  </div>
+
+  <button onclick="customerConfirmed()" style="
+    background:var(--success);
+    color:#fff;
+    border:none;
+    border-radius:14px;
+    padding:16px 32px;
+    font-family:'Syne',sans-serif;
+    font-weight:700;
+    font-size:16px;
+    cursor:pointer;
+    width:100%;
+    transition:all 0.2s;
+  ">
+    Yes, Got my order! 🙌
+  </button>
+
+  <button onclick="notYet()" style="
+    background:transparent;
+    color:var(--muted);
+    border:1px solid var(--border);
+    border-radius:14px;
+    padding:12px 32px;
+    font-family:'DM Sans',sans-serif;
+    font-size:14px;
+    cursor:pointer;
+    width:100%;
+    margin-top:10px;
+    transition:all 0.2s;
+  ">
+    Not yet, still waiting
+  </button>
+</div>
+
+<!-- STATE 3: ORDER COMPLETE -->
+<div id="order-complete-screen" style="display:none;flex-direction:column;align-items:center;text-align:center;padding:60px 0 40px;animation:fadeUp 0.5s ease both">
+  
+  <div style="font-size:72px;margin-bottom:24px">🎉</div>
+  
+  <h2 style="font-family:'Syne',sans-serif;font-size:28px;font-weight:800;margin-bottom:10px">
+    Enjoy your meal!
+  </h2>
+  <p style="color:var(--muted);font-size:14px;margin-bottom:36px;max-width:260px;line-height:1.6">
+    Thanks for visiting. Hope to see you again soon!
+  </p>
+
+  <!-- Order summary -->
+  <div id="complete-order-summary" style="
+    width:100%;
+    background:var(--surface);
+    border:1px solid var(--border);
+    border-radius:var(--radius);
+    padding:20px;
+    text-align:left;
+    margin-bottom:20px;
+  "></div>
+
+  <!-- Token memento -->
+  <div style="
+    width:100%;
+    background:rgba(255,107,53,0.06);
+    border:1px solid rgba(255,107,53,0.2);
+    border-radius:var(--radius);
+    padding:16px;
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+  ">
+    <span style="font-size:13px;color:var(--muted)">Your token was</span>
+    <span style="font-family:'Syne',sans-serif;font-weight:800;font-size:22px;color:var(--accent)" id="complete-token">—</span>
+  </div>
+</div>
+<!-- STICKY CART BAR -->
+<div class="cart-bar" id="cart-bar">
+  <div class="cart-inner">
+    <div class="cart-info">
+      <div class="cart-count" id="cart-count">0 items selected</div>
+      <div class="cart-total" id="cart-total">₹0</div>
+    </div>
+    <button class="pay-btn" id="pay-btn" onclick="skipAndJoin()">
+      Pay & Join
+      <span class="arrow">→</span>
+    </button>
+  </div>
+</div>
+
+<script>
+  // ─── STATE ───────────────────────────────────────────
+  let allItems = [];
+  let selected = {}; // { itemId: { item, qty } }
+  let myToken = null;
+  let socket = null;
+  let activeCategory = 'all';
+
+  // Emoji map for categories
+  const emojiMap = {
+    snacks: ['🥙','🌮','🥪','🫔','🥨','🍿'],
+    drinks: ['☕','🧋','🥤','🍵','🧃','🍹'],
+    meals:  ['🍛','🍜','🍲','🥘','🫕','🍱'],
+    sweets: ['🍮','🧁','🍩','🍪','🍫','🍬'],
+    default:['🍽','🥗','🍴','🥣','🧆','🥜'],
+  };
+
+  function getEmoji(category, index) {
+    const arr = emojiMap[category?.toLowerCase()] || emojiMap.default;
+    return arr[index % arr.length];
+  }
+
+  // ─── FETCH MENU ───────────────────────────────────────
+  async function loadMenu() {
+    try {
+      const res = await fetch('/menu');
+      allItems = await res.json();
+      buildCategories();
+      renderMenu(allItems);
+    } catch(e) {
+      document.getElementById('menu-grid').innerHTML =
+        '<p style="color:var(--muted);font-size:14px;padding:20px 0">Could not load menu. Please refresh.</p>';
+    }
+  }
+
+  function buildCategories() {
+    const cats = ['all', ...new Set(allItems.map(i => i.category))];
+    const container = document.getElementById('categories');
+    container.innerHTML = cats.map(c =>
+      `<button class="cat-btn ${c==='all'?'active':''}" data-cat="${c}" onclick="filterCategory('${c}')">
+        ${c.charAt(0).toUpperCase() + c.slice(1)}
+      </button>`
+    ).join('');
+  }
+
+  function filterCategory(cat) {
+    activeCategory = cat;
+    document.querySelectorAll('.cat-btn').forEach(b => b.classList.toggle('active', b.dataset.cat === cat));
+    const filtered = cat === 'all' ? allItems : allItems.filter(i => i.category === cat);
+    renderMenu(filtered);
+    const empty = document.getElementById('empty-state');
+    empty.style.display = filtered.length === 0 ? 'block' : 'none';
+  }
+
+  function renderMenu(items) {
+    const grid = document.getElementById('menu-grid');
+    if (items.length === 0) { grid.innerHTML = ''; return; }
+
+    grid.innerHTML = items.map((item, i) => {
+      const sel = selected[item.id];
+      const isSelected = !!sel;
+      const qty = sel ? sel.qty : 1;
+      const emoji = getEmoji(item.category, i);
+
+      return `
+        <div class="menu-item ${isSelected ? 'selected' : ''}" id="item-${item.id}" onclick="toggleItem('${item.id}')">
+          <div class="item-emoji">${emoji}</div>
+          <div class="item-info">
+            <div class="item-name">${item.name}</div>
+            <div class="item-category">${item.category}</div>
+            <div class="qty-control" onclick="event.stopPropagation()">
+              <button class="qty-btn" onclick="changeQty('${item.id}', -1)">−</button>
+              <span class="qty-num" id="qty-${item.id}">${qty}</span>
+              <button class="qty-btn" onclick="changeQty('${item.id}', 1)">+</button>
+            </div>
+          </div>
+          <div style="display:flex;flex-direction:column;align-items:flex-end;gap:8px">
+            <div class="item-price">₹${item.price}</div>
+            <div class="item-check">
+              <svg width="12" height="9" viewBox="0 0 12 9" fill="none">
+                <path d="M1 4L4.5 7.5L11 1" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+            </div>
+          </div>
+        </div>`;
+    }).join('');
+  }
+
+  // ─── SELECTION ────────────────────────────────────────
+  function toggleItem(id) {
+    const item = allItems.find(i => i.id === id);
+    if (!item) return;
+    if (selected[id]) {
+      delete selected[id];
+    } else {
+      selected[id] = { item, qty: 1 };
+    }
+    updateCartBar();
+    // Re-render just this item
+    const el = document.getElementById(`item-${id}`);
+    if (!el) return;
+    const isSelected = !!selected[id];
+    el.classList.toggle('selected', isSelected);
+    const qtyEl = el.querySelector('.qty-control');
+    if (qtyEl) qtyEl.style.display = isSelected ? 'flex' : 'none';
+  }
+
+  function changeQty(id, delta) {
+    if (!selected[id]) return;
+    selected[id].qty = Math.max(1, selected[id].qty + delta);
+    const el = document.getElementById(`qty-${id}`);
+    if (el) el.textContent = selected[id].qty;
+    updateCartBar();
+  }
+
+  function updateCartBar() {
+    const items = Object.values(selected);
+    const count = items.reduce((s, i) => s + i.qty, 0);
+    const total = items.reduce((s, i) => s + i.item.price * i.qty, 0);
+
+    document.getElementById('cart-count').textContent = `${count} item${count !== 1 ? 's' : ''} selected`;
+    document.getElementById('cart-total').textContent = `₹${total}`;
+
+    const bar = document.getElementById('cart-bar');
+    bar.classList.toggle('visible', count > 0);
+  }
+  // temperary skipping payment 
+  async function skipAndJoin() {
+  const items = Object.values(selected);
+  if (items.length === 0) return;
+
+  const total = items.reduce((s, i) => s + i.item.price * i.qty, 0);
+  const btn = document.getElementById('pay-btn');
+  btn.disabled = true;
+  btn.textContent = 'Joining...';
+
+  try {
+    const res = await fetch('/join-queue', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        items: items.map(i => ({ 
+          id: i.item.id, 
+          name: i.item.name, 
+          price: i.item.price, 
+          qty: i.qty 
+        })),
+        totalAmount: total
+      })
+    });
+    const result = await res.json();
+    if (result.success) {
+      showSuccess(result.token, result.position, items, total);
+    }
+  } catch(e) {
+    alert('Something went wrong. Please try again.');
+    btn.disabled = false;
+    btn.innerHTML = 'Join Queue (Demo) <span class="arrow">→</span>';
+  }
+}
+
+  // ─── PAYMENT ─────────────────────────────────────────
+  async function initiatePayment() {
+    const items = Object.values(selected);
+    if (items.length === 0) return;
+
+    const total = items.reduce((s, i) => s + i.item.price * i.qty, 0);
+    const btn = document.getElementById('pay-btn');
+    btn.disabled = true;
+    btn.textContent = 'Processing...';
+
+    try {
+      // Create order on backend
+      const res = await fetch('/payment/create-order', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          amount: total,
+          items: items.map(i => ({ id: i.item.id, name: i.item.name, price: i.item.price, qty: i.qty }))
+        })
+      });
+      const order = await res.json();
+
+      // Open Razorpay
+      const options = {
+        key: order.razorpayKeyId,
+        amount: order.amount,
+        currency: 'INR',
+        name: 'Queue System',
+        description: 'Order Payment',
+        order_id: order.orderId,
+        theme: { color: '#ff6b35' },
+                // ─── These 3 lines force UPI intent flow ───
+        method: 'upi',
+        _: {
+          integration: 'mobile_web',
+          flow: 'intent'
+        },
+        // ──────────────────────────────────────────
+
+        handler: async function(response) {
+          // Verify & join queue
+          const verify = await fetch('/payment/verify', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              razorpay_order_id: response.razorpay_order_id,
+              razorpay_payment_id: response.razorpay_payment_id,
+              razorpay_signature: response.razorpay_signature,
+              items: items.map(i => ({ id: i.item.id, name: i.item.name, price: i.item.price, qty: i.qty })),
+              totalAmount: total
+            })
+          });
+          const result = await verify.json();
+          if (result.success) {
+            showSuccess(result.token, result.position, items, total);
+          }
+        },
+        modal: {
+          ondismiss: () => {
+            btn.disabled = false;
+            btn.innerHTML = 'Pay & Join <span class="arrow">→</span>';
+          }
+        }
+      };
+
+      const rzp = new Razorpay(options);
+      rzp.open();
+    } catch(e) {
+      alert('Something went wrong. Please try again.');
+      btn.disabled = false;
+      btn.innerHTML = 'Pay & Join <span class="arrow">→</span>';
+    }
+  }
+
+  // ─── SUCCESS SCREEN ───────────────────────────────────
+  function showSuccess(token, position, items, total) {
+    document.getElementById('menu-section').style.display = 'none';
+    document.getElementById('cart-bar').style.display = 'none';
+
+    const screen = document.getElementById('success-screen');
+    screen.classList.add('show');
+    document.getElementById('token-display').textContent = token;
+    document.getElementById('queue-position').innerHTML =
+      `${Math.max(0, position - 1)}<span> people ahead</span>`;
+
+    // Show order summary
+    const orderEl = document.getElementById('your-order');
+    const rows = items.map(i =>
+      `<div class="order-item-row">
+        <span class="name">${i.qty}× ${i.item.name}</span>
+        <span class="price">₹${i.item.price * i.qty}</span>
+      </div>`
+    ).join('');
+    orderEl.innerHTML = `
+      <p class="queue-card-label" style="margin-bottom:12px">Your order</p>
+      ${rows}
+      <div class="order-item-row" style="margin-top:4px">
+        <span class="name" style="font-weight:500">Total paid</span>
+        <span class="price" style="font-size:16px;font-weight:700">₹${total}</span>
+      </div>`;
+
+    myToken = token;
+    connectSocket(token);
+  }
+
+  // ─── SOCKET.IO ────────────────────────────────────────
+ function connectSocket(token) {
+  socket = io();
+  socket.emit('customer-join', { token });
+
+  socket.on('queue-updated', (data) => {
+    if (myToken === null) return;
+
+    // My turn just came
+    if (data.lastServedToken === myToken - 1) {
+      showYourTurn();
+      return;
+    }
+
+    // Owner pressed Next while I was on "your turn" screen = auto complete
+    if (data.lastServedToken === myToken) {
+      showOrderComplete();
+      return;
+    }
+
+    // Still waiting — update position
+    const posEl = document.getElementById('queue-position');
+    if (posEl && document.getElementById('success-screen').classList.contains('show')) {
+      const ahead = Math.max(0, myToken - data.lastServedToken - 1);
+      posEl.innerHTML = `${ahead}<span> people ahead</span>`;
+      posEl.classList.add('updated');
+      setTimeout(() => posEl.classList.remove('updated'), 600);
+    }
+  });
+}
+
+function showYourTurn() {
+  // Hide success screen, show your-turn screen
+  document.getElementById('success-screen').style.display = 'none';
+  const screen = document.getElementById('your-turn-screen');
+  screen.style.display = 'flex';
+
+  // Flash background green
+  document.body.style.transition = 'background 0.5s';
+  document.body.style.background = '#0a1a0f';
+  setTimeout(() => document.body.style.background = 'var(--bg)', 1200);
+}
+
+function customerConfirmed() {
+  // Customer tapped "Yes got it"
+  showOrderComplete();
+}
+
+function notYet() {
+  // Customer tapped "Not yet" — go back to waiting screen
+  document.getElementById('your-turn-screen').style.display = 'none';
+  const screen = document.getElementById('success-screen');
+  screen.style.display = 'flex';
+  screen.classList.add('show');
+  document.getElementById('queue-position').innerHTML = 
+    `<span style="color:var(--success);font-size:16px">Counter is ready for you!</span>`;
+}
+
+function showOrderComplete() {
+  // Hide all other screens
+  document.getElementById('success-screen').style.display = 'none';
+  document.getElementById('your-turn-screen').style.display = 'none';
+
+  // Disconnect socket — no more updates needed
+  if (socket) socket.disconnect();
+  myToken = null;
+
+  // Fill order summary
+  const summaryEl = document.getElementById('complete-order-summary');
+  const savedItems = Object.values(selected);
+  if (savedItems.length > 0) {
+    const total = savedItems.reduce((s, i) => s + i.item.price * i.qty, 0);
+    summaryEl.innerHTML = `
+      <p style="font-size:11px;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted);margin-bottom:12px">Your order</p>
+      ${savedItems.map(i => `
+        <div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border);font-size:14px">
+          <span>${i.qty > 1 ? i.qty+'× ' : ''}${i.item.name}</span>
+          <span style="color:var(--accent2);font-weight:500">₹${i.item.price * i.qty}</span>
+        </div>`).join('')}
+      <div style="display:flex;justify-content:space-between;padding:10px 0 0;font-size:15px;font-weight:500">
+        <span>Total paid</span>
+        <span style="color:var(--accent);font-family:'Syne',sans-serif;font-weight:700">₹${total}</span>
+      </div>`;
+  }
+
+  // Set token memento
+  document.getElementById('complete-token').textContent = 
+    document.getElementById('token-display').textContent;
+
+  // Show complete screen
+  const screen = document.getElementById('order-complete-screen');
+  screen.style.display = 'flex';
+
+  // Warm flash
+  document.body.style.transition = 'background 0.6s';
+  document.body.style.background = '#1a0f00';
+  setTimeout(() => document.body.style.background = 'var(--bg)', 1500);
+}
+
+  // ─── INIT ─────────────────────────────────────────────
+  loadMenu();
+</script>
+<!-- OWNER AUTH MODAL -->
+<div id="owner-modal" style="
+  display:none;
+  position:fixed;
+  inset:0;
+  z-index:500;
+  background:rgba(0,0,0,0.7);
+  backdrop-filter:blur(4px);
+  align-items:center;
+  justify-content:center;
+  padding:20px;
+">
+  <div style="
+    background:var(--surface);
+    border:1px solid var(--border);
+    border-radius:20px;
+    padding:28px;
+    width:100%;
+    max-width:360px;
+    position:relative;
+    animation:fadeUp 0.3s ease both;
+  ">
+    <!-- Close -->
+    <button onclick="toggleOwnerModal()" style="
+      position:absolute;top:16px;right:16px;
+      background:var(--surface2);border:none;
+      border-radius:50%;width:28px;height:28px;
+      cursor:pointer;color:var(--muted);font-size:16px;
+      display:flex;align-items:center;justify-content:center;
+    ">×</button>
+
+    <!-- Tabs -->
+    <div style="display:flex;gap:4px;background:var(--surface2);border-radius:10px;padding:4px;margin-bottom:24px">
+      <button id="tab-login" onclick="switchTab('login')" style="
+        flex:1;padding:8px;border:none;border-radius:8px;
+        font-family:'Syne',sans-serif;font-weight:600;font-size:13px;
+        cursor:pointer;background:var(--accent);color:#fff;transition:all 0.2s;
+      ">Login</button>
+      <button id="tab-register" onclick="switchTab('register')" style="
+        flex:1;padding:8px;border:none;border-radius:8px;
+        font-family:'Syne',sans-serif;font-weight:600;font-size:13px;
+        cursor:pointer;background:transparent;color:var(--muted);transition:all 0.2s;
+      ">Register</button>
+    </div>
+
+    <div id="modal-title" style="
+      font-family:'Syne',sans-serif;font-size:18px;
+      font-weight:800;margin-bottom:20px;
+    ">Owner Login</div>
+
+    <!-- Form -->
+    <div id="auth-form" style="display:flex;flex-direction:column;gap:12px">
+      <input id="auth-email" type="email" placeholder="Email address" style="
+        background:var(--surface2);border:1px solid var(--border);
+        border-radius:10px;padding:12px 14px;
+        font-family:'DM Sans',sans-serif;font-size:14px;
+        color:var(--text);outline:none;width:100%;
+        transition:border 0.2s;
+      " onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'"/>
+
+      <input id="auth-password" type="password" placeholder="Password" style="
+        background:var(--surface2);border:1px solid var(--border);
+        border-radius:10px;padding:12px 14px;
+        font-family:'DM Sans',sans-serif;font-size:14px;
+        color:var(--text);outline:none;width:100%;
+        transition:border 0.2s;
+      " onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'"/>
+
+      <div id="auth-error" style="
+        color:#ff4444;font-size:12px;
+        display:none;padding:8px 12px;
+        background:rgba(255,68,68,0.1);
+        border-radius:8px;
+      "></div>
+
+      <button id="auth-submit-btn" onclick="handleAuth()" style="
+        background:var(--accent);color:#fff;border:none;
+        border-radius:10px;padding:13px;
+        font-family:'Syne',sans-serif;font-weight:700;font-size:14px;
+        cursor:pointer;transition:all 0.2s;width:100%;
+      ">Login</button>
+    </div>
+
+    <!-- Logged in state -->
+    <div id="logged-in-state" style="display:none;text-align:center">
+      <div style="font-size:36px;margin-bottom:12px">👋</div>
+      <div style="font-family:'Syne',sans-serif;font-weight:700;font-size:16px;margin-bottom:6px">Welcome back!</div>
+      <div style="font-size:13px;color:var(--muted);margin-bottom:24px" id="logged-in-email"></div>
+      <a href="/owner.html" style="
+        display:block;background:var(--accent);color:#fff;
+        border-radius:10px;padding:13px;text-decoration:none;
+        font-family:'Syne',sans-serif;font-weight:700;font-size:14px;
+        margin-bottom:10px;
+      ">Go to Dashboard →</a>
+      <button onclick="handleLogout()" style="
+        width:100%;background:transparent;
+        border:1px solid var(--border);border-radius:10px;
+        padding:11px;font-family:'DM Sans',sans-serif;
+        font-size:13px;color:var(--muted);cursor:pointer;
+      ">Logout</button>
+    </div>
+  </div>
+</div>
+
+<!-- AUTH SCRIPT -->
+<script type="module">
+  import { auth, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, onAuthStateChanged } from '/firebase-client.js';
+
+  window._authMode = 'login';
+
+  window.switchTab = function(tab) {
+    const isLogin = tab === 'login';
+    document.getElementById('tab-login').style.background = isLogin ? 'var(--accent)' : 'transparent';
+    document.getElementById('tab-login').style.color = isLogin ? '#fff' : 'var(--muted)';
+    document.getElementById('tab-register').style.background = !isLogin ? 'var(--accent)' : 'transparent';
+    document.getElementById('tab-register').style.color = !isLogin ? '#fff' : 'var(--muted)';
+    document.getElementById('modal-title').textContent = isLogin ? 'Owner Login' : 'Create Account';
+    document.getElementById('auth-submit-btn').textContent = isLogin ? 'Login' : 'Register';
+    document.getElementById('auth-error').style.display = 'none';
+    window._authMode = tab;
+  }
+
+  window.toggleOwnerModal = function() {
+    const modal = document.getElementById('owner-modal');
+    const isOpen = modal.style.display === 'flex';
+    modal.style.display = isOpen ? 'none' : 'flex';
+  }
+
+  window.handleAuth = async function() {
+    const email = document.getElementById('auth-email').value.trim();
+    const password = document.getElementById('auth-password').value;
+    const errEl = document.getElementById('auth-error');
+    const btn = document.getElementById('auth-submit-btn');
+
+    errEl.style.display = 'none';
+    btn.textContent = 'Please wait...';
+    btn.disabled = true;
+
+    try {
+      if (window._authMode === 'login') {
+        await signInWithEmailAndPassword(auth, email, password);
+      } else {
+        const cred = await createUserWithEmailAndPassword(auth, email, password);
+        await fetch('/auth/register', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ uid: cred.user.uid, email, role: 'owner' })
+        });
+      }
+    } catch(e) {
+      errEl.textContent = friendlyError(e.code);
+      errEl.style.display = 'block';
+      btn.textContent = window._authMode === 'login' ? 'Login' : 'Register';
+      btn.disabled = false;
+    }
+  }
+
+  window.handleLogout = async function() {
+    await signOut(auth);
+  }
+
+  onAuthStateChanged(auth, (user) => {
+    const formEl = document.getElementById('auth-form');
+    const tabsEl = document.querySelector('[id^="tab-login"]')?.parentElement;
+    const loggedInEl = document.getElementById('logged-in-state');
+    const cornerBtn = document.getElementById('owner-corner-btn');
+
+    if (user) {
+      if (formEl) formEl.style.display = 'none';
+      if (tabsEl) tabsEl.style.display = 'none';
+      document.getElementById('modal-title').style.display = 'none';
+      loggedInEl.style.display = 'block';
+      document.getElementById('logged-in-email').textContent = user.email;
+      cornerBtn.innerHTML = `
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+        </svg>
+        Dashboard`;
+      cornerBtn.style.color = 'var(--accent)';
+      cornerBtn.style.borderColor = 'var(--accent)';
+    } else {
+      if (formEl) formEl.style.display = 'flex';
+      if (tabsEl) tabsEl.style.display = 'flex';
+      document.getElementById('modal-title').style.display = 'block';
+      loggedInEl.style.display = 'none';
+      cornerBtn.innerHTML = `
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+        </svg>
+        Owner`;
+      cornerBtn.style.color = 'var(--muted)';
+      cornerBtn.style.borderColor = 'var(--border)';
+    }
+  });
+
+  function friendlyError(code) {
+    const map = {
+      'auth/invalid-email': 'Invalid email address.',
+      'auth/user-not-found': 'No account found with this email.',
+      'auth/wrong-password': 'Incorrect password.',
+      'auth/email-already-in-use': 'This email is already registered.',
+      'auth/weak-password': 'Password must be at least 6 characters.',
+      'auth/too-many-requests': 'Too many attempts. Try again later.',
+      'auth/invalid-credential': 'Invalid email or password.',
+    };
+    return map[code] || 'Something went wrong. Try again.';
+  }
+</script>
+
+</body>
+</html>
