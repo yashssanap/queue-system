@@ -47,9 +47,13 @@ app.get('/ping', (req, res) => {
 
 // Fetch menu items
 app.get('/menu', async (req, res) => {
+  try{
   const snapshot = await db.collection('menu_items').get();
   const items = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-  res.json(items);
+  res.json(items);}
+  catch(err){}
+  console.error("server error",err)
+   res.status(500).json({ error: 'Failed to items  user' }); // Prevents a silent crash
 });
 
 //authentication route(owner)
